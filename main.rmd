@@ -1,0 +1,570 @@
+```{r}
+install.packages("rlang")
+install.packages("recipes", repos="http://cran.r-project.org")
+install.packages("parsnip", repos="http://cran.r-project.org")
+install.packages("workflows", repos="http://cran.r-project.org")
+install.packages('patchwork')
+install.packages('corrplot')
+install.packages('ggthemes')
+install.packages('viridis')
+install.packages("magrittr")
+install.packages('gt')
+install.packages('readr')
+install.packages('vroom')
+install.packages('forcats')
+install.packages('janitor')
+install.packages('naniar')
+install.packages('ggrepel')
+install.packages('rsample')
+install.packages('tune')
+install.packages('vip')
+install.packages('tictoc')
+install.packages("glmnet")
+```
+
+```{r}
+# general visualisation
+library('ggplot2')
+library('scales')
+library('patchwork')
+library('RColorBrewer')
+library('corrplot')
+library('ggthemes')
+library('viridis')
+library('gt') # table styling
+
+# general data manipulation
+library('dplyr') # data manipulation
+library('readr') # input/output
+library('vroom') # input/output
+library('tibble') # data wrangling
+library('tidyr') # data wrangling
+library('stringr') # string manipulation
+library('forcats') # factor manipulation
+library('janitor') # cleaning
+
+# specific 
+library('glue') # encoding
+library('naniar') # missing values
+library('ggrepel') # visualisation
+library('grid') # visualisation
+library('GGally') # visualisation
+library('ggforce') # visualisation
+
+# modelling
+library("rsample")
+library("recipes")
+library("tune")
+library("parsnip")
+library("yardstick")
+library("workflows")
+library("vip")
+library("dials")
+library("glmnet")
+
+# time keeping
+library("tictoc")
+```
+
+```{r}
+path = str_c(getwd(), '/kaggle/input/song-popularity-prediction/')
+```
+
+```{r}
+train <- vroom(str_c(path, "train.csv"), col_types = cols())
+test <- vroom(str_c(path, "test.csv"), col_types = cols())
+```
+
+```{r}
+get_binCI <- function(x,n) as.list(setNames(binom.test(x,n)$conf.int, c("lwr", "upr")))
+```
+
+```{r}
+glimpse(train)
+```
+
+```{r}
+head(train)
+```
+
+```{r}
+summary(train)
+```
+
+```{r}
+glue("The train set has { sum(is.na(train)) } missing values out of {dim(train)[1]*dim(train)[2]} \n The test set has { sum(is.na(test)) } out of {dim(test)[1]*dim(test)[2]}.")
+```
+```{r}
+train %>% 
+  sample_frac(0.2) %>% 
+  naniar::vis_miss()
+```
+
+```{r}
+train <- train %>% 
+  mutate(across(c(key, time_signature), as.factor)) %>% 
+  mutate(across(c(song_popularity, audio_mode), as.logical))
+```
+
+```{r}
+p1 <- train %>% 
+  filter(!is.na(song_duration_ms)) %>%
+  ggplot(aes(song_duration_ms)) +
+  geom_density(fill = "blue") +
+  theme_minimal() +
+  labs(x = "", title = "Song duration")
+
+p2 <- train %>% 
+ filter(!is.na(acousticness)) %>%
+ ggplot(aes(acousticness)) +
+ geom_density(fill = "orange", bw = 0.01) +
+ theme_minimal() +
+ labs(x = "", title = "Acousticness")
+
+p3 <- train %>% 
+ filter(!is.na(danceability)) %>%
+ ggplot(aes(danceability)) +
+ geom_density(fill = "red") +
+ theme_minimal() +
+ labs(x = "", title = "Danceability")
+
+p4 <- train %>% 
+ filter(!is.na(energy)) %>%
+ ggplot(aes(energy)) +
+ geom_density(fill = "darkgreen") +
+ theme_minimal() +
+ labs(x = "", title = "Energy")
+
+p5 <- train %>% 
+ filter(instrumentalness > 0) %>% 
+ filter(!is.na(instrumentalness)) %>%
+ ggplot(aes(instrumentalness)) +
+ geom_density(fill = "violet") +
+ scale_x_continuous(trans = "log") +
+ theme_minimal() +
+ labs(x = "", title = "Instrumentalness (log transform)")
+
+p6 <- train %>% 
+ filter(!is.na(key)) %>% 
+ count(key) %>% 
+ ggplot(aes(key, n, fill = key)) +
+ geom_col() +
+ theme_minimal() +
+ theme(legend.position = "none") +
+ labs(x = "", title = "Key")
+
+
+p7 <- train %>% 
+ filter(!is.na(liveness)) %>%
+ ggplot(aes(liveness)) +
+ geom_density(fill = "purple") +
+ theme_minimal() +
+ labs(x = "", title = "Liveness")
+
+
+p8 <- train %>% 
+ filter(!is.na(loudness)) %>%
+ ggplot(aes(loudness)) +
+ geom_density(fill = "lightblue") +
+ theme_minimal() +
+ labs(x = "", title = "Loudness")
+
+p9 <- train %>% 
+ filter(!is.na(audio_mode)) %>%
+ count(audio_mode) %>% 
+ ggplot(aes(audio_mode, n, fill = as.factor(n))) +
+ geom_col() +
+ theme_minimal() +
+ theme(legend.position = "none") +
+ labs(x = "", title = "Audio Mode")
+
+p10 <- train %>% 
+ filter(!is.na(speechiness)) %>%
+ ggplot(aes(speechiness)) +
+ geom_density(fill = "darkred") +
+ theme_minimal() +
+ labs(x = "", title = "Speechiness")
+
+p11 <- train %>% 
+ filter(!is.na(tempo)) %>%
+ ggplot(aes(tempo)) +
+ geom_density(fill = "orange4") +
+ theme_minimal() +
+ labs(x = "", title = "Tempo")
+
+p12 <- train %>% 
+ filter(!is.na(time_signature)) %>%
+ count(time_signature) %>% 
+ ggplot(aes(time_signature, n, fill = time_signature)) +
+ geom_col() +
+ theme_minimal() +
+ theme(legend.position = "none") +
+ labs(x = "", title = "Time signature")
+
+p13 <- train %>% 
+ filter(!is.na(audio_valence)) %>%
+ ggplot(aes(audio_valence)) +
+ geom_density(fill = "yellow4") +
+ theme_minimal() +
+ labs(x = "", title = "Audio Valence")
+
+(p1 + p2 + p3) / (p4 + p5 + p6) / (p7 + p8 + p9) / (p10 + p11 + p12) / p13
+
+
+design <- "
+ABC
+DEE
+FFG
+HIJ
+KLM
+"
+
+# p1 + p2 + p3 + p4 + p5 + p6 + p7 + p8 + p9 + p10 + p11 + p12 + p13 +
+#   plot_layout(design = design) +
+#   plot_annotation(title = 'Song Popularity Features')
+```
+
+```{r}
+train %>% 
+  count(song_popularity) %>% 
+  mutate(frac = n/sum(n)) %>% 
+  ggplot(aes(song_popularity, frac, fill = song_popularity)) +
+  geom_col() +
+  scale_y_continuous(labels = scales::percent) +
+  theme_hc() +
+  theme(legend.position = "none") +
+  labs(y = "", x = "", title = "Target: Song Popularity")
+```
+
+```{r}
+train %>% 
+  select(where(is.numeric), song_popularity, -id) %>% 
+  drop_na() %>% 
+  filter(instrumentalness > 0) %>% 
+  mutate(instrumentalness = log10(instrumentalness)) %>% 
+  pivot_longer(c(-song_popularity), names_to = "type", values_to = "value") %>% 
+  ggplot(aes(value, fill = song_popularity)) +
+  geom_density(alpha = 0.5) +
+  facet_wrap(~ type, scales = "free") +
+  theme_minimal() +
+  theme(legend.position = "top") +
+  labs(title = "Target impact - numerical features")
+```
+
+```{r}
+train %>% 
+  drop_na() %>% 
+  select(audio_mode, key, time_signature, song_popularity) %>% 
+  mutate(audio_mode = as.factor(as.numeric(audio_mode))) %>% 
+  pivot_longer(c(-song_popularity), names_to = "type", values_to = "value") %>% 
+  mutate(type = fct_relevel(as.factor(type), c("audio_mode", "time_signature", "key"))) %>% 
+  ggplot(aes(value, fill = song_popularity)) +
+  geom_bar(position = "dodge") +
+  facet_wrap(~ type, scales = "free", nrow = 2) +
+  theme_minimal() +
+  theme(legend.position = "top") +
+  labs(title = "Target impact - categorical features - step 1")
+```
+
+```{r}
+train %>% 
+  drop_na() %>% 
+  select(audio_mode, key, time_signature, song_popularity) %>% 
+  mutate(audio_mode = as.factor(as.numeric(audio_mode))) %>% 
+  pivot_longer(c(-song_popularity), names_to = "type", values_to = "value") %>% 
+  group_by(type, value, song_popularity) %>% 
+  summarise(n = n()) %>% 
+  mutate(frac = n/sum(n)) %>% 
+  ungroup() %>% 
+  filter(song_popularity != FALSE) %>% 
+  ggplot(aes(value, frac, fill = type)) +
+  geom_col() +
+  scale_y_continuous(labels = scales::percent) +
+  facet_wrap(~ type, scales = "free_x") +
+  theme_minimal() +
+  theme(legend.position = "top") +
+  labs(title = "Target impact - categorical features - step 2: percentages of popular songs")
+```
+
+```{r}
+train %>% 
+  drop_na() %>% 
+  select(audio_mode, key, time_signature, song_popularity) %>% 
+  mutate(audio_mode = as.factor(as.numeric(audio_mode))) %>% 
+  pivot_longer(c(-song_popularity), names_to = "type", values_to = "value") %>% 
+  count(type, value, song_popularity) %>% 
+  mutate(song_popularity = str_to_lower(str_c("song_", as.character(song_popularity)))) %>% 
+  pivot_wider(names_from = song_popularity, values_from = n) %>%
+  group_by(type, value) %>% 
+  mutate(frac = song_true/(song_true + song_false)*100,
+         lwr = get_binCI(song_true,(song_true + song_false))[[1]]*100,
+         upr = get_binCI(song_true,(song_true + song_false))[[2]]*100
+         ) %>%
+  ggplot(aes(value, frac, col = type)) +
+  geom_point(size = 4) +
+  geom_errorbar(aes(ymin = lwr, ymax = upr)) +
+  facet_wrap(~ type, scales = "free_x") +
+  theme_hc() +
+  theme(legend.position = "top") +
+  labs(title = "Target impact - categorical features - step 3: points with uncertainties")
+```
+
+```{r}
+train %>% 
+  select(-id) %>% 
+  mutate(across(everything(), as.numeric)) %>% 
+  cor(use = "pairwise.complete.obs", method = "spearman") %>% 
+  corrplot(type = "upper", diag = FALSE, method = "square")
+```
+
+```{r}
+train %>% 
+  drop_na() %>% 
+  ggplot(aes(energy, fill = time_signature)) +
+  geom_density(alpha = 0.5, bw = 0.03) +
+  theme_minimal() +
+  theme(legend.position = "top")
+```
+
+```{r}
+train %>% 
+  drop_na() %>% 
+  group_by(key, time_signature) %>% 
+  summarise(energy = median(energy, na.rm = TRUE)) %>% 
+  ggplot(aes(key, time_signature, fill = energy)) +
+  geom_tile() +
+  scale_fill_viridis_c() +
+  theme_minimal() +
+  theme(legend.position = "top")
+```
+
+```{r}
+train %>% 
+  drop_na() %>% 
+  ggplot(aes(energy, loudness)) +
+  geom_point(size = 0.5) +
+  geom_density2d() +
+  geom_smooth(method = "lm", formula = "y~x", col = "red") +
+  theme_minimal() +
+  labs(title = "Numerical features correlation example: energy vs loudness")
+```
+
+```{r}
+train %>% 
+  drop_na() %>% 
+  ggplot(aes(energy, loudness)) +
+  geom_point(size = 0.5) +
+  geom_density2d() +
+  geom_smooth(method = "lm", formula = "y~x", col = "red") +
+  facet_wrap(~ time_signature) +
+  theme_minimal() +
+  labs(title = "Numerical features correlation example: energy vs loudness vs time_signature")
+```
+
+```{r}
+train %>% 
+  select(where(is.numeric), -id) %>% 
+  # select(seq(2,4)) %>% 
+  drop_na() %>% 
+  filter(instrumentalness > 0) %>% 
+  mutate(instrumentalness = log10(instrumentalness)) %>% 
+  ggpairs(lower = list(continuous = wrap("points", alpha = 0.3, size=0.01)),
+          upper = list(continuous = wrap("smooth", alpha = 0.005, size = 0.1)),
+          progress = FALSE) +
+  theme_tufte() +
+  theme(axis.text = element_blank(), axis.ticks = element_blank()) +
+  labs(title = "Pair plots: lower: scatter; upper: linear fit")
+```
+
+```{r}
+inst <- train %>% 
+  select(instrumentalness) %>% 
+  filter(!is.na(instrumentalness))
+```
+
+```{r}
+inst %>% 
+  ggplot(aes(instrumentalness)) +
+  geom_histogram(bins = 1000, fill = "violet") +
+  facet_zoom(x = instrumentalness < 0.04) +
+  labs(title = "Instrumentalness - Zoom into the main distribution mass")
+```
+
+```{r}
+p1 <- inst %>% 
+  mutate(subset = if_else(instrumentalness < 0.01, "main_subset", "side_subset")) %>%  
+  ggplot(aes(instrumentalness, fill = subset)) +
+  geom_density() +
+  facet_wrap(~ subset, scales = "free") +
+  scale_fill_manual(values = c("violet", "darkviolet")) +
+  theme_minimal() +
+  theme(legend.position = "none") +
+  labs(x = "", subtitle = "Based on a threshold of instrumentalness = 0.01 the feature can be separated pretty cleanly into 2 separate distributions")
+
+p2 <- train %>% 
+  filter(!is.na(instrumentalness)) %>% 
+  mutate(subset = if_else(instrumentalness < 0.01, "main_subset", "side_subset")) %>%
+  ggplot(aes(instrumentalness, fill = song_popularity)) +
+  geom_density(alpha = 0.5) +
+  facet_wrap(~ subset, scales = "free") +
+  theme_minimal() +
+  theme(legend.position = "top") +
+  labs(x = "", subtitle = "And here is how those distributions are impacted by the target")
+
+p1 / p2 + plot_annotation(title = "Instrumentalness: Decomposition")
+```
+
+```{r}
+foo <- inst %>% 
+  filter(instrumentalness < 0.01) 
+
+foo %>% 
+  ggplot(aes(instrumentalness)) +
+  geom_density(bw = 1e-5) +
+  stat_function(fun = dnorm, args = list(mean = mean(foo$instrumentalness), sd = sd(foo$instrumentalness)), col = "red") +
+  theme_minimal() +
+  labs(title = "Instrumentalness: main distribution vs normal distribution curve (red)")
+```
+
+```{r}
+train %>% 
+  drop_na() %>% 
+  select(key, time_signature, energy, song_popularity) %>% 
+  filter(key == 1 & time_signature == 4) %>% 
+  group_by(song_popularity) %>% 
+  summarise(count = n(),
+            mean_energy = mean(energy, na.rm = TRUE),
+            median_energy = median(energy, na.rm = TRUE),
+            sd_energy = sd(energy, na.rm = TRUE))
+```
+
+```{r}
+train %>% 
+  drop_na() %>% 
+  ggplot(aes(energy, audio_valence)) +
+  geom_density2d_filled() +
+  facet_wrap(~ song_popularity)
+```
+
+```{r}
+foo <- train %>% 
+  select(where(is.numeric), -id, song_popularity) %>% 
+  drop_na() %>% 
+  filter(instrumentalness > 0) %>% 
+  mutate(instrumentalness = log10(instrumentalness))
+
+foo %>% 
+  ggpairs(
+    columns = 1:(ncol(foo)-1),
+    mapping = aes(color = song_popularity, alpha = 0.5),
+    lower = list(continuous = wrap("points", alpha = 0.3, size=0.01)),
+    upper = list(continuous = wrap("smooth", alpha = 0.005, size = 0.1)),
+    progress = FALSE) +
+  theme_tufte() +
+  theme(axis.text = element_blank(), axis.ticks = element_blank()) +
+  labs(title = "Pair plots: lower: scatter; upper: linear fit - colour by target")
+```
+
+```{r}
+rec_lr <- 
+  recipe(song_popularity ~ ., data = train) %>%
+  update_role(id, new_role = "id") %>% 
+  step_mutate(instrumentalness = if_else(instrumentalness < 0.01, NA_real_, instrumentalness)) %>%
+  step_mutate(acousticness = if_else(acousticness < 0.035, NA_real_, acousticness)) %>%
+  step_mutate_at(c(key, time_signature, audio_mode), fn = as.factor) %>%
+  step_mutate(song_popularity = as.factor(song_popularity), skip = TRUE) %>% 
+  step_impute_median(all_numeric_predictors()) %>% 
+  step_impute_mode(all_nominal(), -all_outcomes()) %>%
+  step_dummy(all_nominal(), -all_outcomes()) %>%
+  step_normalize(all_numeric_predictors()) 
+```
+
+```{r}
+rec_lr
+```
+
+```{r}
+log_reg_model <- 
+  logistic_reg(penalty = tune(), mixture = 0) %>% 
+  set_engine("glmnet")
+
+wfl_lr <- workflow() %>% 
+  add_model(log_reg_model) %>% 
+  add_recipe(rec_lr)
+
+set.seed(4321)
+folds <- vfold_cv(train, v = 5)
+
+grid_lr <- tibble(penalty = 10^seq(-4, -1, length.out = 20))
+
+tic()
+set.seed(4321)
+res_lr <- wfl_lr %>% 
+  tune_grid(
+    resamples = folds,
+    control = control_grid(save_pred = TRUE),
+    grid = grid_lr,
+    metrics = metric_set(accuracy, roc_auc)
+  )
+toc()
+```
+
+```{r}
+res_lr %>% 
+  show_best("roc_auc") %>%
+  select(-.config)
+```
+
+```{r}
+res_lr %>% 
+  collect_metrics() %>% 
+  ggplot(aes(penalty, mean, col = .metric)) +
+  geom_line(size = 1) +
+  geom_point(size = 2) +
+  scale_x_log10() +
+  facet_wrap(~ .metric, scales = "free", nrow = 1) +
+  theme_minimal() +
+  theme(legend.position = "none") +
+  labs(title = "Tuning result for Logistic Regression model")
+```
+
+```{r}
+best_param_lr <- res_lr %>% 
+  select_best("roc_auc")
+
+wfl_final_lr <- wfl_lr %>% 
+  finalize_workflow(best_param_lr)
+
+fit_final_lr <- wfl_final_lr %>% 
+  fit(data = train)
+```
+
+```{r}
+fit_final_lr %>% 
+  extract_fit_parsnip() %>% 
+  vip(aesthetics = list(fill = "lightblue")) +
+  theme_minimal() +
+  labs(title = "Feature importances for Logistic Regression model")
+```
+
+```{r}
+submit_lr <- test %>% 
+  select(id) %>% 
+  mutate(song_popularity = predict(fit_final_lr, test, type = "prob") %>% 
+  pull(.pred_0))
+
+submit_lr %>% 
+  head(5)
+```
+
+
+
+
+
+
+
+
+
+
+
+
